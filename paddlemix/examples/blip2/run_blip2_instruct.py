@@ -20,18 +20,17 @@ from paddlemix.models.blip2.blip2_vicuna_instruct import Blip2VicunaInstruct
 raw_image = Image.open("Confusing-Pictures.jpg").convert("RGB")
 model = Blip2VicunaInstruct(vit_precision="fp32")
 
-# from lavis.models import load_model_and_preprocess
-# # loads InstructBLIP model
-# # model, vis_processors, _ = load_model_and_preprocess(name="blip2_opt", model_type="pretrain_opt2.7b", is_eval=True, device=device)
-# model, vis_processors, _ = load_model_and_preprocess(name="blip2_vicuna_instruct", model_type="vicuna7b", is_eval=True, device=device)
-# print(model)
-# exit()
-# # prepare the image
-# image = vis_processors["eval"](raw_image).unsqueeze(0)
-import numpy as np
+from lavis.models import load_model_and_preprocess
 
-t1 = np.load("image.np.npy")
-raw_image = paddle.to_tensor(t1)
+# loads InstructBLIP model
+# model, vis_processors, _ = load_model_and_preprocess(name="blip2_opt", model_type="pretrain_opt2.7b", is_eval=True, device=device)
+model, vis_processors, _ = load_model_and_preprocess(name="blip2_vicuna_instruct", model_type="vicuna7b", is_eval=True)
+# prepare the image
+image = vis_processors["eval"](raw_image).unsqueeze(0)
 
-ret = model.generate({"image": raw_image, "prompt": "What is unusual about this image?"})
+# import numpy as np
+# t1 = np.load("image.np.npy")
+# raw_image = paddle.to_tensor(t1)
+
+ret = model.generate({"image": image, "prompt": "What is unusual about this image?"})
 print(ret)
