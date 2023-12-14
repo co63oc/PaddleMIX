@@ -63,6 +63,7 @@ else:
         LVDMAutoencoderKL,
         LVDMUNet3DModel,
         ModelMixin,
+        MotionAdapter,
         MultiAdapter,
         PriorTransformer,
         T2IAdapter,
@@ -72,6 +73,7 @@ else:
         UNet2DConditionModel,
         UNet2DModel,
         UNet3DConditionModel,
+        UNetMotionModel,
         VQModel,
     )
     from .optimization import (
@@ -263,6 +265,10 @@ else:
         FastDeployStableDiffusionMegaPipeline,
         FastDeployStableDiffusionPipeline,
         FastDeployStableDiffusionUpscalePipeline,
+        FastDeployStableDiffusionXLPipeline,
+        FastDeployStableDiffusionXLImg2ImgPipeline,
+        FastDeployStableDiffusionXLInpaintPipeline,
+        FastDeployStableDiffusionXLMegaPipeline,
     )
 
 try:
