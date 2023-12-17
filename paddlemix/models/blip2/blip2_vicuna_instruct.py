@@ -46,7 +46,7 @@ class Blip2VicunaInstruct(Blip2Base):
         qformer_text_input=True,
     ):
         super().__init__(config=Blip2Config())
-        from paddlenlp.transformers import AutoTokenizer, OPTForCausalLM
+        from paddlenlp.transformers import LlamaForCausalLM, LlamaTokenizer
 
         self.tokenizer = self.init_tokenizer(truncation_side="left")
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
@@ -72,9 +72,11 @@ class Blip2VicunaInstruct(Blip2Base):
             self.Qformer.resize_token_embeddings(len(self.tokenizer))
         self.Qformer.cls = None
 
-        self.llm_tokenizer = AutoTokenizer.from_pretrained(llm_model, use_fast=False, truncation_side="left")
-        # self.llm_model = OPTForCausalLM.from_pretrained(llm_model, paddle_dtype=paddle.float16)
-        self.llm_model = OPTForCausalLM.from_pretrained(llm_model)
+        # self.llm_tokenizer = LlamaTokenizer.from_pretrained(llm_model, use_fast=False, truncation_side="left")
+        # # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, paddle_dtype=paddle.float16)
+        # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model)
+        self.llm_tokenizer = LlamaTokenizer()
+        self.llm_model = LlamaForCausalLM()
         self.llm_tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         self.llm_tokenizer.add_special_tokens({"bos_token": "</s>"})
         self.llm_tokenizer.add_special_tokens({"eos_token": "</s>"})
