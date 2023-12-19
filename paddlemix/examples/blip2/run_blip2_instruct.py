@@ -18,7 +18,7 @@ from PIL import Image
 from paddlemix.models.blip2.blip2_vicuna_instruct import Blip2VicunaInstruct
 
 raw_image = Image.open("Confusing-Pictures.jpg").convert("RGB")
-model = Blip2VicunaInstruct(vit_precision="fp32")
+model = Blip2VicunaInstruct(vit_precision="fp32", llm_model="/nfs/model/vicuna-7b-v1.1")
 print("start paddle-----")
 for name, value in model.named_parameters():
     print(name, value.shape)

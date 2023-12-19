@@ -72,11 +72,11 @@ class Blip2VicunaInstruct(Blip2Base):
             self.Qformer.resize_token_embeddings(len(self.tokenizer))
         self.Qformer.cls = None
 
-        # self.llm_tokenizer = LlamaTokenizer.from_pretrained(llm_model, use_fast=False, truncation_side="left")
-        # # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, paddle_dtype=paddle.float16)
-        # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model)
-        self.llm_tokenizer = LlamaTokenizer()
-        self.llm_model = LlamaForCausalLM()
+        self.llm_tokenizer = LlamaTokenizer.from_pretrained(llm_model, use_fast=False, truncation_side="left")
+        # self.llm_model = LlamaForCausalLM.from_pretrained(llm_model, paddle_dtype=paddle.float16)
+        self.llm_model = LlamaForCausalLM.from_pretrained(llm_model)
+        # self.llm_tokenizer = LlamaTokenizer()
+        # self.llm_model = LlamaForCausalLM()
         self.llm_tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         self.llm_tokenizer.add_special_tokens({"bos_token": "</s>"})
         self.llm_tokenizer.add_special_tokens({"eos_token": "</s>"})
