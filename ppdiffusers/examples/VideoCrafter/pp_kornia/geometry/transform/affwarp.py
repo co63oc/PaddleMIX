@@ -16,8 +16,7 @@ from typing import Optional, Tuple, Union
 
 import paddle
 
-from ... import filters
-from ... import utils as utils_kornia
+from ... import filters, utils
 
 __all__ = ["resize"]
 
@@ -34,7 +33,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
     return int(side_size / aspect_ratio), side_size
 
 
-@utils_kornia.image.perform_keep_shape_image
+@utils.image.perform_keep_shape_image
 def resize(
     input: paddle.Tensor,
     size: Union[int, Tuple[int, int]],
