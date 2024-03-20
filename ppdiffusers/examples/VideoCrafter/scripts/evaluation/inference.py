@@ -92,9 +92,11 @@ def run_inference(args, gpu_num, gpu_no, **kwargs):
     prompt_list_rank = [prompt_list[i] for i in indices]
     if args.mode == "i2v":
         cond_inputs = get_filelist(args.cond_input, ext="[mpj][pn][4gj]")
+        """
         assert (
             len(cond_inputs) == num_samples
         ), f"Error: conditional input ({len(cond_inputs)}) NOT match prompt ({num_samples})!"
+        """
         filename_list = [f"{os.path.split(cond_inputs[id])[-1][:-4]}" for id in range(num_samples)]
         cond_inputs_rank = [cond_inputs[i] for i in indices]
     filename_list_rank = [filename_list[i] for i in indices]
