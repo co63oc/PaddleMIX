@@ -1,0 +1,17 @@
+decord
+einops
+imageio
+numpy
+omegaconf
+opencv_python
+pandas
+Pillow
+PyYAML
+setuptools
+tqdm
+moviepy
+av
+gradio
+timm
+scikit-learn
+kornia
