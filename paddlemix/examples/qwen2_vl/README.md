@@ -20,23 +20,41 @@ PaddleMIX团队基于`Qwen2-VL-2B-Instruct`设计了专门针对文档理解类�
 
 
 ## 2 环境准备
+1）[安装PaddlePaddle](https://github.com/PaddlePaddle/PaddleMIX?tab=readme-ov-file#3-%EF%B8%8F%E5%AE%89%E8%A3%85paddlepaddle)
 - **python >= 3.10**
-- **paddlepaddle-gpu 要求是develop版本**
+- **paddlepaddle-gpu 要求是3.0.0b2或develop版本**
 ```bash
-# 安装示例
+# 提供三种 PaddlePaddle 安装命令示例，也可参考PaddleMIX主页的安装教程进行安装
+
+# 3.0.0b2版本安装示例 (CUDA 11.8)
+python -m pip install paddlepaddle-gpu==3.0.0b2 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+
+# Develop 版本安装示例
 python -m pip install paddlepaddle-gpu==0.0.0.post118 -f https://www.paddlepaddle.org.cn/whl/linux/gpu/develop.html
+
+# sh 脚本快速安装
+sh build_paddle_env.sh
 ```
 
-- **paddlenlp == 3.0.0b3**
+2）[安装PaddleMIX环境依赖包](https://github.com/PaddlePaddle/PaddleMIX?tab=readme-ov-file#3-%EF%B8%8F%E5%AE%89%E8%A3%85paddlepaddle)
+- **paddlenlp >= 3.0.0b3**
+
 ```bash
-# 安装示例
-python -m pip install paddlenlp==3.0.0b3
+# 提供两种 PaddleMIX 依赖安装命令示例
+
+# pip 安装示例，安装paddlemix、ppdiffusers、项目依赖、paddlenlp
+python -m pip install -e . --user
+python -m pip install -e ppdiffusers --user
+python -m pip install -r requirements.txt --user
+python -m pip install paddlenlp==3.0.0b3 --user
+
+# sh 脚本快速安装
+sh build_env.sh
 ```
 
 > 注：
 * 请确保安装了以上依赖，否则无法运行。同时，需要安装 paddlemix/external_ops 下的自定义OP, `python setup.py install`。如果安装后仍然找不到算子，需要额外设置PYTHONPATH
-* (默认开启flash_attn)使用flash_attn 要求A100/A800显卡或者H20显卡
-
+* (默认开启flash_attn)使用flash_attn 要求A100/A800显卡或者H20显卡。V100请用float16推理。
 
 ## 3 推理预测
 
@@ -85,16 +103,16 @@ wget https://paddlenlp.bj.bcebos.com/datasets/paddlemix/playground/opensource_js
 
 ```bash
 # 2B
-sh paddlemix/examples/qwen2_vl/shell/basline_2b_bs32_1e8.sh
+sh paddlemix/examples/qwen2_vl/shell/baseline_2b_bs32_1e8.sh
 
 # 2B lora
-sh paddlemix/examples/qwen2_vl/shell/basline_2b_lora_bs32_1e8.sh
+sh paddlemix/examples/qwen2_vl/shell/baseline_2b_lora_bs32_1e8.sh
 
 # 7B
-sh paddlemix/examples/qwen2_vl/shell/basline_7b_bs32_1e8.sh
+sh paddlemix/examples/qwen2_vl/shell/baseline_7b_bs32_1e8.sh
 
 # 7B lora
-sh paddlemix/examples/qwen2_vl/shell/basline_7b_lora_bs32_1e8.sh
+sh paddlemix/examples/qwen2_vl/shell/baseline_7b_lora_bs32_1e8.sh
 ```
 
 注意：微调2b模型的运行示例如下：
