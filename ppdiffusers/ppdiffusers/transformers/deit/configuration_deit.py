@@ -19,8 +19,8 @@ from typing import Mapping
 
 from packaging import version
 
-from ...configuration_utils import PretrainedConfig
-from ...onnx import OnnxConfig
+from ..model_utils import PretrainedConfig
+# from ..onnx import OnnxConfig
 from ...utils import logging
 
 
@@ -133,8 +133,8 @@ class DeiTConfig(PretrainedConfig):
         self.pooler_act = pooler_act
 
 
-class DeiTOnnxConfig(OnnxConfig):
-    torch_onnx_minimum_version = version.parse("1.11")
+class DeiTOnnxConfig:
+    paddle_onnx_minimum_version = version.parse("1.11")
 
     @property
     def inputs(self) -> Mapping[str, Mapping[int, str]]:

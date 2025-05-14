@@ -19,21 +19,20 @@ import os
 import tempfile
 from typing import Optional, Tuple, Union
 
-import torch
-from torch import nn
+import paddle
+from paddle import nn
 
-from ...configuration_utils import PretrainedConfig
+from ...model_utils import PretrainedConfig, PretrainedModel as PreTrainedModel
 from ...generation import GenerationMixin
 from ...modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
-from ...modeling_utils import PreTrainedModel
 from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
-from ..auto.configuration_auto import AutoConfig
-from ..auto.modeling_auto import AutoModel, AutoModelForCausalLM
+from ..auto.configuration import AutoConfig
+from ..auto.modeling import AutoModel, AutoModelForCausalLM
 from .configuration_vision_encoder_decoder import VisionEncoderDecoderConfig
 
 
 # Copied from transformers.models.encoder_decoder.modeling_encoder_decoder.shift_tokens_right
-def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int):
+def shift_tokens_right(input_ids: paddle.Tensor, pad_token_id: int, decoder_start_token_id: int):
     """
     Shift input ids one token to the right.
     """
@@ -78,10 +77,6 @@ VISION_ENCODER_DECODER_START_DOCSTRING = r"""
     library implements for all its model (such as downloading or saving, resizing the input embeddings, pruning heads
     etc.)
 
-    This model is also a PyTorch [torch.nn.Module](https://pytorch.org/docs/stable/nn.html#torch.nn.Module) subclass.
-    Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to general usage
-    and behavior.
-
     Parameters:
         config ([`VisionEncoderDecoderConfig`]): Model configuration class with all the parameters of the model.
             Initializing with a config file does not load the weights associated with the model, only the
@@ -90,10 +85,10 @@ VISION_ENCODER_DECODER_START_DOCSTRING = r"""
 
 VISION_ENCODER_DECODER_INPUTS_DOCSTRING = r"""
     Args:
-        pixel_values (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        pixel_values (`paddle.Tensor` of shape `(batch_size, num_channels, height, width)`):
             Pixel values. Pixel values can be obtained using an image processor (e.g. if you use ViT as the encoder,
             you should use [`AutoImageProcessor`]). See [`ViTImageProcessor.__call__`] for details.
-        decoder_input_ids (`torch.LongTensor` of shape `(batch_size, target_sequence_length)`, *optional*):
+        decoder_input_ids (`paddle.Tensor` of shape `(batch_size, target_sequence_length)`, *optional*):
             Indices of decoder input sequence tokens in the vocabulary.
 
             Indices can be obtained using [`PreTrainedTokenizer`]. See [`PreTrainedTokenizer.encode`] and
@@ -106,25 +101,25 @@ VISION_ENCODER_DECODER_INPUTS_DOCSTRING = r"""
 
             For training, `decoder_input_ids` are automatically created by the model by shifting the `labels` to the
             right, replacing -100 by the `pad_token_id` and prepending them with the `decoder_start_token_id`.
-        decoder_attention_mask (`torch.BoolTensor` of shape `(batch_size, target_sequence_length)`, *optional*):
+        decoder_attention_mask (`paddle.Tensor` of shape `(batch_size, target_sequence_length)`, *optional*):
             Default behavior: generate a tensor that ignores pad tokens in `decoder_input_ids`. Causal mask will also
             be used by default.
-        encoder_outputs (`tuple(torch.FloatTensor)`, *optional*):
+        encoder_outputs (`tuple(paddle.Tensor)`, *optional*):
             This tuple must consist of (`last_hidden_state`, *optional*: `hidden_states`, *optional*: `attentions`)
-            `last_hidden_state` (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`) is a tensor
+            `last_hidden_state` (`paddle.Tensor` of shape `(batch_size, sequence_length, hidden_size)`) is a tensor
             of hidden-states at the output of the last layer of the encoder. Used in the cross-attention of the
             decoder.
-        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
+        past_key_values (`tuple(tuple(paddle.Tensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
             Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
 
             If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
             don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
             `decoder_input_ids` of shape `(batch_size, sequence_length)`.
-        decoder_inputs_embeds (`torch.FloatTensor` of shape `(batch_size, target_sequence_length, hidden_size)`, *optional*):
+        decoder_inputs_embeds (`paddle.Tensor` of shape `(batch_size, target_sequence_length, hidden_size)`, *optional*):
             Optionally, instead of passing `decoder_input_ids` you can choose to directly pass an embedded
             representation. This is useful if you want more control over how to convert `decoder_input_ids` indices
             into associated vectors than the model's internal embedding lookup matrix.
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+        labels (`paddle.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss for the decoder. Indices should be in `[-100, 0,
             ..., config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored
             (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
@@ -334,10 +329,11 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
                 tf_model.decoder.save_pretrained(decoder_dir)
 
                 if hasattr(tf_model, "enc_to_dec_proj"):
-                    enc_to_dec_proj_weight = torch.transpose(
-                        torch.from_numpy(tf_model.enc_to_dec_proj.kernel.numpy()), 1, 0
+                    # TODO: may have multiple dimensions
+                    enc_to_dec_proj_weight = paddle.transpose(
+                        paddle.to_tensor(tf_model.enc_to_dec_proj.kernel.numpy()), [1, 0]
                     )
-                    enc_to_dec_proj_bias = torch.from_numpy(tf_model.enc_to_dec_proj.bias.numpy())
+                    enc_to_dec_proj_bias = paddle.to_tensor(tf_model.enc_to_dec_proj.bias.numpy())
 
                 del _tf_model
                 del tf_model
@@ -396,7 +392,7 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
                     - A path or url to a *tensorflow index checkpoint file* (e.g, `./tf_model/model.ckpt.index`). In
                       this case, `from_tf` should be set to `True` and a configuration object should be provided as
                       `config` argument. This loading path is slower than converting the TensorFlow checkpoint in a
-                      PyTorch model using the provided conversion scripts and loading the PyTorch model afterwards.
+                      Paddle model using the provided conversion scripts and loading the Paddle model afterwards.
 
             decoder_pretrained_model_name_or_path (`str`, *optional*, defaults to `None`):
                 Information necessary to initiate the text decoder. Can be either:
@@ -407,7 +403,7 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
                     - A path or url to a *tensorflow index checkpoint file* (e.g, `./tf_model/model.ckpt.index`). In
                       this case, `from_tf` should be set to `True` and a configuration object should be provided as
                       `config` argument. This loading path is slower than converting the TensorFlow checkpoint in a
-                      PyTorch model using the provided conversion scripts and loading the PyTorch model afterwards.
+                      Paddle model using the provided conversion scripts and loading the Paddle model afterwards.
 
             model_args (remaining positional arguments, *optional*):
                 All remaining positional arguments will be passed to the underlying model's `__init__` method.
@@ -525,19 +521,19 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
     @replace_return_docstrings(output_type=Seq2SeqLMOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
-        pixel_values: Optional[torch.FloatTensor] = None,
-        decoder_input_ids: Optional[torch.LongTensor] = None,
-        decoder_attention_mask: Optional[torch.BoolTensor] = None,
-        encoder_outputs: Optional[Tuple[torch.FloatTensor]] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[paddle.Tensor] = None,
+        decoder_input_ids: Optional[paddle.Tensor] = None,
+        decoder_attention_mask: Optional[paddle.Tensor] = None,
+        encoder_outputs: Optional[Tuple[paddle.Tensor]] = None,
+        past_key_values: Optional[Tuple[Tuple[paddle.Tensor]]] = None,
+        decoder_inputs_embeds: Optional[paddle.Tensor] = None,
+        labels: Optional[paddle.Tensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         **kwargs,
-    ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
+    ) -> Union[Tuple[paddle.Tensor], Seq2SeqLMOutput]:
         r"""
         Returns:
 
@@ -547,7 +543,7 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
         >>> from transformers import AutoProcessor, VisionEncoderDecoderModel
         >>> import requests
         >>> from PIL import Image
-        >>> import torch
+        >>> import paddle
 
         >>> processor = AutoProcessor.from_pretrained("microsoft/trocr-base-handwritten")
         >>> model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
@@ -658,7 +654,7 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
             encoder_attentions=encoder_outputs.attentions,
         )
 
-    def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
+    def prepare_decoder_input_ids_from_labels(self, labels: paddle.Tensor):
         return shift_tokens_right(labels, self.config.pad_token_id, self.config.decoder_start_token_id)
 
     def _reorder_cache(self, past_key_values, beam_idx):

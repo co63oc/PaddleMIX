@@ -212,7 +212,7 @@ class DeiTImageProcessor(BaseImageProcessor):
                 The type of tensors to return. Can be one of:
                     - `None`: Return a list of `np.ndarray`.
                     - `TensorType.TENSORFLOW` or `'tf'`: Return a batch of type `tf.Tensor`.
-                    - `TensorType.PYTORCH` or `'pt'`: Return a batch of type `torch.Tensor`.
+                    - `TensorType.PYTORCH` or `'pt'`: Return a batch of type `paddle.Tensor`.
                     - `TensorType.NUMPY` or `'np'`: Return a batch of type `np.ndarray`.
                     - `TensorType.JAX` or `'jax'`: Return a batch of type `jax.numpy.ndarray`.
             data_format (`ChannelDimension` or `str`, *optional*, defaults to `ChannelDimension.FIRST`):
@@ -245,7 +245,7 @@ class DeiTImageProcessor(BaseImageProcessor):
         if not valid_images(images):
             raise ValueError(
                 "Invalid image type. Must be of type PIL.Image.Image, numpy.ndarray, "
-                "torch.Tensor, tf.Tensor or jax.ndarray."
+                "paddle.Tensor, tf.Tensor or jax.ndarray."
             )
         validate_preprocess_arguments(
             do_rescale=do_rescale,

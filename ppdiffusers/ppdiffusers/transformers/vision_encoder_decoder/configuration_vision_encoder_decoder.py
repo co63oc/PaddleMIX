@@ -18,10 +18,9 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, OrderedDict
 
 from packaging import version
 
-from ...configuration_utils import PretrainedConfig
-from ...onnx import OnnxConfig
+from ...model_utils import PretrainedConfig
 from ...utils import logging
-from ..auto.configuration_auto import AutoConfig
+from ..auto.configuration import AutoConfig
 
 
 if TYPE_CHECKING:
@@ -116,8 +115,8 @@ class VisionEncoderDecoderConfig(PretrainedConfig):
         return cls(encoder=encoder_config.to_dict(), decoder=decoder_config.to_dict(), **kwargs)
 
 
-class VisionEncoderDecoderEncoderOnnxConfig(OnnxConfig):
-    torch_onnx_minimum_version = version.parse("1.11")
+class VisionEncoderDecoderEncoderOnnxConfig:
+    paddle_onnx_minimum_version = version.parse("1.11")
 
     @property
     def inputs(self) -> Mapping[str, Mapping[int, str]]:
@@ -136,7 +135,7 @@ class VisionEncoderDecoderEncoderOnnxConfig(OnnxConfig):
         return OrderedDict({"last_hidden_state": {0: "batch", 1: "encoder_sequence"}})
 
 
-class VisionEncoderDecoderDecoderOnnxConfig(OnnxConfig):
+class VisionEncoderDecoderDecoderOnnxConfig:
     @property
     def inputs(self) -> Mapping[str, Mapping[int, str]]:
         common_inputs = OrderedDict()
@@ -171,12 +170,12 @@ class VisionEncoderDecoderDecoderOnnxConfig(OnnxConfig):
         return common_inputs
 
 
-class VisionEncoderDecoderOnnxConfig(OnnxConfig):
+class VisionEncoderDecoderOnnxConfig:
     @property
     def inputs(self) -> None:
         pass
 
-    def get_encoder_config(self, encoder_config: PretrainedConfig) -> OnnxConfig:
+    def get_encoder_config(self, encoder_config: PretrainedConfig):
         r"""
         Returns ONNX encoder config for `VisionEncoderDecoder` model.
 
@@ -191,7 +190,7 @@ class VisionEncoderDecoderOnnxConfig(OnnxConfig):
 
     def get_decoder_config(
         self, encoder_config: PretrainedConfig, decoder_config: PretrainedConfig, feature: str = "default"
-    ) -> OnnxConfig:
+    ):
         r"""
         Returns ONNX decoder config for `VisionEncoderDecoder` model.
 
