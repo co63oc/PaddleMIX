@@ -20,11 +20,15 @@ import warnings
 from contextlib import contextmanager
 from typing import List, Union
 
-from ...image_processing_utils import BatchFeature
-from ...image_utils import ImageInput
-from ...processing_utils import ProcessingKwargs, ProcessorMixin, Unpack
-from ...tokenization_utils_base import PreTokenizedInput, TextInput
+from paddlenlp.transformers.image_processing_utils import BatchFeature
+from paddlenlp.transformers.image_utils import ImageInput
+from paddlenlp.transformers.processing_utils import ProcessorMixin
+from paddlenlp.transformers.tokenizer_utils_base import PreTokenizedInput, TextInput
 
+if sys.version_info >= (3, 11):
+    Unpack = typing.Unpack
+else:
+    Unpack = typing_extensions.Unpack
 
 class TrOCRProcessorKwargs(total=False):
     _defaults = {}

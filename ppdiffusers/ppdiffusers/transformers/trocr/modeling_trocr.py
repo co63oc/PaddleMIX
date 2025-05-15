@@ -74,7 +74,7 @@ class TrOCRScaledWordEmbedding(nn.Embedding):
         return super().forward(input_ids) * self.embed_scale
 
 
-class TrOCRSinusoidalPositionalEmbedding(nn.Module):
+class TrOCRSinusoidalPositionalEmbedding(nn.Layer):
     """This module produces sinusoidal positional embeddings of any length."""
 
     def __init__(self, num_positions: int, embedding_dim: int, padding_idx: Optional[int] = None):
@@ -136,7 +136,7 @@ class TrOCRSinusoidalPositionalEmbedding(nn.Module):
         return incremental_indices.long() + padding_idx
 
 
-class TrOCRAttention(nn.Module):
+class TrOCRAttention(nn.Layer):
     """Multi-headed attention from 'Attention Is All You Need' paper."""
 
     def __init__(
@@ -288,7 +288,7 @@ class TrOCRAttention(nn.Module):
         return attn_output, attn_weights_reshaped, past_key_value
 
 
-class TrOCRDecoderLayer(nn.Module):
+class TrOCRDecoderLayer(nn.Layer):
     def __init__(self, config: TrOCRConfig):
         super().__init__()
         self.embed_dim = config.hidden_size
@@ -481,7 +481,7 @@ class TrOCRDecoder(TrOCRPreTrainedModel):
         else:
             self.layernorm_embedding = None
 
-        self.layers = nn.ModuleList([TrOCRDecoderLayer(config) for _ in range(config.decoder_layers)])
+        self.layers = nn.LayerList([TrOCRDecoderLayer(config) for _ in range(config.decoder_layers)])
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
