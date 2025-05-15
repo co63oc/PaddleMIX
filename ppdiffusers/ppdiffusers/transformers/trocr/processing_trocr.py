@@ -26,7 +26,7 @@ from ...processing_utils import ProcessingKwargs, ProcessorMixin, Unpack
 from ...tokenization_utils_base import PreTokenizedInput, TextInput
 
 
-class TrOCRProcessorKwargs(ProcessingKwargs, total=False):
+class TrOCRProcessorKwargs(total=False):
     _defaults = {}
 
 
