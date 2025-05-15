@@ -22,12 +22,13 @@ from typing import Optional, Tuple, Union
 import paddle
 from paddle import nn
 
-from ...model_utils import PretrainedConfig, PretrainedModel as PreTrainedModel
-from ...generation import GenerationMixin
-from ...modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
-from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
+from ..model_utils import PretrainedConfig, PretrainedModel as PreTrainedModel
+from paddlenlp.generation import GenerationMixin
+from paddlenlp.transformers.model_outputs import BaseModelOutput, Seq2SeqLMOutput
+from ...utils import logging
 from ..auto.configuration import AutoConfig
-from ..auto.modeling import AutoModel, AutoModelForCausalLM
+from ..auto.modeling import AutoModel
+from paddlenlp.transformers.auto.modeling import AutoModelForCausalLM
 from .configuration_vision_encoder_decoder import VisionEncoderDecoderConfig
 
 
@@ -141,7 +142,6 @@ VISION_ENCODER_DECODER_INPUTS_DOCSTRING = r"""
 """
 
 
-@add_start_docstrings(VISION_ENCODER_DECODER_START_DOCSTRING)
 class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
     r"""
     [`VisionEncoderDecoderModel`] is a generic model class that will be instantiated as a transformer architecture with
@@ -517,8 +517,6 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
         config.tie_word_embeddings = False
         return cls(encoder=encoder, decoder=decoder, config=config)
 
-    @add_start_docstrings_to_model_forward(VISION_ENCODER_DECODER_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=Seq2SeqLMOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         pixel_values: Optional[paddle.Tensor] = None,
