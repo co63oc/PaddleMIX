@@ -17,7 +17,7 @@
 import warnings
 
 from ...utils import logging
-from .image_processing_deit import DeiTImageProcessor
+from .image_processing import DeiTImageProcessor
 
 
 logger = logging.get_logger(__name__)

@@ -12,53 +12,175 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch DeiT model."""
+"""Paddle DeiT model."""
 
+from collections import OrderedDict, UserDict
 import collections.abc
+from collections.abc import Iterable, MutableMapping
 from dataclasses import dataclass
 from typing import Callable, Optional, Set, Tuple, Union
+import warnings
 
-import torch
-import torch.utils.checkpoint
-from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+import paddle
+from paddle import nn
+from paddle.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from ...activations import ACT2FN
-from ...modeling_outputs import (
+from paddlenlp.transformers.activations import ACT2FN
+from paddlenlp.transformers.model_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPooling,
-    ImageClassifierOutput,
-    MaskedImageModelingOutput,
 )
-from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
-from ...pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
+from ..model_utils import PretrainedModel as PreTrainedModel
 from ...utils import (
-    ModelOutput,
-    add_code_sample_docstrings,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
     logging,
-    replace_return_docstrings,
-    torch_int,
 )
 from .configuration_deit import DeiTConfig
 
 
 logger = logging.get_logger(__name__)
 
+
+def find_pruneable_heads_and_indices(
+    heads: list[int], n_heads: int, head_size: int, already_pruned_heads: set[int]
+) -> tuple[set[int], paddle.Tensor]:
+    """
+    Finds the heads and their indices taking `already_pruned_heads` into account.
+
+    Args:
+        heads (`List[int]`): List of the indices of heads to prune.
+        n_heads (`int`): The number of heads in the model.
+        head_size (`int`): The size of each head.
+        already_pruned_heads (`Set[int]`): A set of already pruned heads.
+
+    Returns:
+        `Tuple[Set[int], paddle.Tensor]`: A tuple with the indices of heads to prune taking `already_pruned_heads`
+        into account and the indices of rows/columns to keep in the layer weight.
+    """
+    mask = paddle.ones([n_heads, head_size])
+    heads = set(heads) - already_pruned_heads  # Convert to set and remove already pruned heads
+    for head in heads:
+        # Compute how many pruned heads are before the head and move the index accordingly
+        head = head - sum(1 if h < head else 0 for h in already_pruned_heads)
+        mask[head] = 0
+    mask = mask.reshape([-1]).contiguous().eq(1)
+    index: paddle.Tensor = paddle.arange(len(mask))[mask].astype(paddle.int64)
+    return heads, index
+
+
+def prune_linear_layer(layer: nn.Linear, index: paddle.Tensor, dim: int = 0) -> nn.Linear:
+    """
+    Prune a linear layer to keep only entries in index.
+
+    Used to remove heads.
+
+    Args:
+        layer (`paddle.nn.Linear`): The layer to prune.
+        index (`paddle.Tensor`): The indices to keep in the layer.
+        dim (`int`, *optional*, defaults to 0): The dimension on which to keep the indices.
+
+    Returns:
+        `paddle.nn.Linear`: The pruned layer as a new layer with `requires_grad=True`.
+    """
+    index = index.to(layer.weight.device)
+    W = layer.weight.index_select(dim, index).detach().clone()
+    if layer.bias is not None:
+        if dim == 1:
+            b = layer.bias.detach().clone()
+        else:
+            b = layer.bias[index].detach().clone()
+    new_size = list(layer.weight.size())
+    new_size[dim] = len(index)
+    new_layer = nn.Linear(new_size[1], new_size[0], bias=layer.bias is not None).to(layer.weight.device)
+    new_layer.weight.stop_gradient = True
+    new_layer.weight.copy_(W.contiguous())
+    new_layer.weight.stop_gradient = False
+    if layer.bias is not None:
+        new_layer.bias.stop_gradient = True
+        new_layer.bias.copy_(b.contiguous())
+        new_layer.bias.stop_gradient = False
+    return new_layer
+
+
+def paddle_int(x):
+    """
+    Casts an input to a paddle int64 tensor if we are in a tracing context, otherwise to a Python int.
+    """
+    return int(x)
+
+
+class ModelOutput(OrderedDict):
+    pass
+
+
+@dataclass
+class ImageClassifierOutput(ModelOutput):
+    """
+    Base class for outputs of image classification models.
+
+    Args:
+        loss (`paddle.Tensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Classification (or regression if config.num_labels==1) loss.
+        logits (`paddle.Tensor` of shape `(batch_size, config.num_labels)`):
+            Classification (or regression if config.num_labels==1) scores (before SoftMax).
+        hidden_states (`tuple(paddle.Tensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `paddle.Tensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each stage) of shape `(batch_size, sequence_length, hidden_size)`. Hidden-states
+            (also called feature maps) of the model at the output of each stage.
+        attentions (`tuple(paddle.Tensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `paddle.Tensor` (one for each layer) of shape `(batch_size, num_heads, patch_size,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[paddle.Tensor] = None
+    logits: Optional[paddle.Tensor] = None
+    hidden_states: Optional[Tuple[paddle.Tensor, ...]] = None
+    attentions: Optional[Tuple[paddle.Tensor, ...]] = None
+
+
+@dataclass
+class MaskedImageModelingOutput(ModelOutput):
+    """
+    Base class for outputs of masked image completion / in-painting models.
+
+    Args:
+        loss (`paddle.Tensor` of shape `(1,)`, *optional*, returned when `bool_masked_pos` is provided):
+            Reconstruction loss.
+        reconstruction (`paddle.Tensor` of shape `(batch_size, num_channels, height, width)`):
+           Reconstructed / completed images.
+        hidden_states (`tuple(paddle.Tensor)`, *optional*, returned when `output_hidden_states=True` is passed or
+        when `config.output_hidden_states=True`):
+            Tuple of `paddle.Tensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each stage) of shape `(batch_size, sequence_length, hidden_size)`. Hidden-states
+            (also called feature maps) of the model at the output of each stage.
+        attentions (`tuple(paddle.Tensor)`, *optional*, returned when `output_attentions=True` is passed or when
+        `config.output_attentions=True`):
+            Tuple of `paddle.Tensor` (one for each layer) of shape `(batch_size, num_heads, patch_size,
+            sequence_length)`. Attentions weights after the attention softmax, used to compute the weighted average in
+            the self-attention heads.
+    """
+
+    loss: Optional[paddle.Tensor] = None
+    reconstruction: Optional[paddle.Tensor] = None
+    hidden_states: Optional[Tuple[paddle.Tensor, ...]] = None
+    attentions: Optional[Tuple[paddle.Tensor, ...]] = None
+
+    @property
+    def logits(self):
+        warnings.warn(
+            "logits attribute is deprecated and will be removed in version 5 of Transformers."
+            " Please use the reconstruction attribute to retrieve the final output instead.",
+            FutureWarning,
+        )
+        return self.reconstruction
+
 # General docstring
 _CONFIG_FOR_DOC = "DeiTConfig"
 
-# Base docstring
-_CHECKPOINT_FOR_DOC = "facebook/deit-base-distilled-patch16-224"
-_EXPECTED_OUTPUT_SHAPE = [1, 198, 768]
 
-# Image classification docstring
-_IMAGE_CLASS_CHECKPOINT = "facebook/deit-base-distilled-patch16-224"
-_IMAGE_CLASS_EXPECTED_OUTPUT = "tabby, tabby cat"
-
-
-class DeiTEmbeddings(nn.Module):
+class DeiTEmbeddings(nn.Layer):
     """
     Construct the CLS token, distillation token, position and patch embeddings. Optionally, also the mask token.
     """
@@ -66,19 +188,19 @@ class DeiTEmbeddings(nn.Module):
     def __init__(self, config: DeiTConfig, use_mask_token: bool = False) -> None:
         super().__init__()
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
-        self.distillation_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size)) if use_mask_token else None
+        self.cls_token = paddle.base.framework.EagerParamBase.from_tensor(paddle.zeros([1, 1, config.hidden_size]))
+        self.distillation_token = paddle.base.framework.EagerParamBase.from_tensor(paddle.zeros([1, 1, config.hidden_size]))
+        self.mask_token = paddle.base.framework.EagerParamBase.from_tensor(paddle.zeros(1, 1, config.hidden_size)) if use_mask_token else None
         self.patch_embeddings = DeiTPatchEmbeddings(config)
         num_patches = self.patch_embeddings.num_patches
-        self.position_embeddings = nn.Parameter(torch.zeros(1, num_patches + 2, config.hidden_size))
+        self.position_embeddings = paddle.base.framework.EagerParamBase.from_tensor(paddle.zeros([1, num_patches + 2, config.hidden_size]))
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.patch_size = config.patch_size
 
     def interpolate_pos_encoding(self, embeddings: paddle.Tensor, height: int, width: int) -> paddle.Tensor:
         """
         This method allows to interpolate the pre-trained position encodings, to be able to use the model on higher resolution
-        images. This method is also adapted to support torch.jit tracing and 2 class embeddings.
+        images. 
 
         Adapted from:
         - https://github.com/facebookresearch/dino/blob/de9ee3df6cf39fac952ab558447af1fa1365362a/vision_transformer.py#L174-L194, and
@@ -89,7 +211,7 @@ class DeiTEmbeddings(nn.Module):
         num_positions = self.position_embeddings.shape[1] - 2
 
         # always interpolate when tracing to ensure the exported model works for dynamic input shapes
-        if not torch.jit.is_tracing() and num_patches == num_positions and height == width:
+        if num_patches == num_positions and height == width:
             return self.position_embeddings
 
         class_and_dist_pos_embed = self.position_embeddings[:, :2]
@@ -100,9 +222,9 @@ class DeiTEmbeddings(nn.Module):
         new_height = height // self.patch_size
         new_width = width // self.patch_size
 
-        sqrt_num_positions = torch_int(num_positions**0.5)
-        patch_pos_embed = patch_pos_embed.reshape(1, sqrt_num_positions, sqrt_num_positions, dim)
-        patch_pos_embed = patch_pos_embed.permute(0, 3, 1, 2)
+        sqrt_num_positions = paddle_int(num_positions**0.5)
+        patch_pos_embed = patch_pos_embed.reshape([1, sqrt_num_positions, sqrt_num_positions, dim])
+        patch_pos_embed = patch_pos_embed.transpose([0, 3, 1, 2])
 
         patch_pos_embed = nn.functional.interpolate(
             patch_pos_embed,
@@ -111,9 +233,9 @@ class DeiTEmbeddings(nn.Module):
             align_corners=False,
         )
 
-        patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
+        patch_pos_embed = patch_pos_embed.transpose([0, 2, 3, 1]).reshape([1, -1, dim])
 
-        return torch.cat((class_and_dist_pos_embed, patch_pos_embed), dim=1)
+        return paddle.concat((class_and_dist_pos_embed, patch_pos_embed), axis=1)
 
     def forward(
         self,
@@ -136,7 +258,7 @@ class DeiTEmbeddings(nn.Module):
 
         distillation_tokens = self.distillation_token.expand(batch_size, -1, -1)
 
-        embeddings = torch.cat((cls_tokens, distillation_tokens, embeddings), dim=1)
+        embeddings = paddle.concat((cls_tokens, distillation_tokens, embeddings), axis=1)
         position_embedding = self.position_embeddings
 
         if interpolate_pos_encoding:
@@ -147,7 +269,7 @@ class DeiTEmbeddings(nn.Module):
         return embeddings
 
 
-class DeiTPatchEmbeddings(nn.Module):
+class DeiTPatchEmbeddings(nn.Layer):
     """
     This class turns `pixel_values` of shape `(batch_size, num_channels, height, width)` into the initial
     `hidden_states` (patch embeddings) of shape `(batch_size, seq_length, hidden_size)` to be consumed by a
@@ -181,7 +303,7 @@ class DeiTPatchEmbeddings(nn.Module):
 
 # Copied from transformers.models.vit.modeling_vit.eager_attention_forward
 def eager_attention_forward(
-    module: nn.Module,
+    module: nn.Layer,
     query: paddle.Tensor,
     key: paddle.Tensor,
     value: paddle.Tensor,
@@ -191,10 +313,12 @@ def eager_attention_forward(
     **kwargs,
 ):
     # Take the dot product between "query" and "key" to get the raw attention scores.
-    attn_weights = torch.matmul(query, key.transpose(-1, -2)) * scaling
+    perm = paddle.arrange(len(key.shape))
+    perm[-2], perm[-1] = perm[-1], perm[-2]
+    attn_weights = paddle.matmul(query, key.transpose(perm)) * scaling
 
     # Normalize the attention scores to probabilities.
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
+    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=paddle.float32).to(query.dtype)
 
     # This is actually dropping out entire tokens to attend to, which might
     # seem a bit unusual, but is taken from the original Transformer paper.
@@ -204,14 +328,14 @@ def eager_attention_forward(
     if attention_mask is not None:
         attn_weights = attn_weights * attention_mask
 
-    attn_output = torch.matmul(attn_weights, value)
+    attn_output = paddle.matmul(attn_weights, value)
     attn_output = attn_output.transpose(1, 2).contiguous()
 
     return attn_output, attn_weights
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTSelfAttention with ViT->DeiT
-class DeiTSelfAttention(nn.Module):
+class DeiTSelfAttention(nn.Layer):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
@@ -245,14 +369,14 @@ class DeiTSelfAttention(nn.Module):
         query_layer = self.transpose_for_scores(self.query(hidden_states))
 
         attention_interface: Callable = eager_attention_forward
-        if self.config._attn_implementation != "eager":
-            if self.config._attn_implementation == "sdpa" and output_attentions:
-                logger.warning_once(
-                    "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
-                    'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
-                )
-            else:
-                attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+        # if self.config._attn_implementation != "eager":
+        #     if self.config._attn_implementation == "sdpa" and output_attentions:
+        #         logger.warning_once(
+        #             "`paddle.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
+        #             'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
+        #         )
+        #     else:
+        #         attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
         context_layer, attention_probs = attention_interface(
             self,
@@ -274,7 +398,7 @@ class DeiTSelfAttention(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTSelfOutput with ViT->DeiT
-class DeiTSelfOutput(nn.Module):
+class DeiTSelfOutput(nn.Layer):
     """
     The residual connection is defined in DeiTLayer instead of here (as is the case with other models), due to the
     layernorm applied before each block.
@@ -293,7 +417,7 @@ class DeiTSelfOutput(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTAttention with ViT->DeiT
-class DeiTAttention(nn.Module):
+class DeiTAttention(nn.Layer):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__()
         self.attention = DeiTSelfAttention(config)
@@ -333,7 +457,7 @@ class DeiTAttention(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTIntermediate with ViT->DeiT
-class DeiTIntermediate(nn.Module):
+class DeiTIntermediate(nn.Layer):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
@@ -350,7 +474,7 @@ class DeiTIntermediate(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTOutput with ViT->DeiT
-class DeiTOutput(nn.Module):
+class DeiTOutput(nn.Layer):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__()
         self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
@@ -366,7 +490,7 @@ class DeiTOutput(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTLayer with ViT->DeiT,VIT->DEIT
-class DeiTLayer(nn.Module):
+class DeiTLayer(nn.Layer):
     """This corresponds to the Block class in the timm implementation."""
 
     def __init__(self, config: DeiTConfig) -> None:
@@ -409,11 +533,11 @@ class DeiTLayer(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTEncoder with ViT->DeiT
-class DeiTEncoder(nn.Module):
+class DeiTEncoder(nn.Layer):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__()
         self.config = config
-        self.layer = nn.ModuleList([DeiTLayer(config) for _ in range(config.num_hidden_layers)])
+        self.layer = nn.LayerList([DeiTLayer(config) for _ in range(config.num_hidden_layers)])
         self.gradient_checkpointing = False
 
     def forward(
@@ -480,7 +604,7 @@ class DeiTPreTrainedModel(PreTrainedModel):
             # Upcast the input in `fp32` and cast it back to desired `dtype` to avoid
             # `trunc_normal_cpu` not implemented in `half` issues
             module.weight.data = nn.init.trunc_normal_(
-                module.weight.data.to(torch.float32), mean=0.0, std=self.config.initializer_range
+                module.weight.data.to(paddle.float32), mean=0.0, std=self.config.initializer_range
             ).to(module.weight.dtype)
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -494,17 +618,6 @@ class DeiTPreTrainedModel(PreTrainedModel):
             if module.mask_token is not None:
                 module.mask_token.data.zero_()
 
-
-DEIT_START_DOCSTRING = r"""
-    This model is a PyTorch [torch.nn.Module](https://pytorch.org/docs/stable/nn.html#torch.nn.Module) subclass. Use it
-    as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to general usage and
-    behavior.
-
-    Parameters:
-        config ([`DeiTConfig`]): Model configuration class with all the parameters of the model.
-            Initializing with a config file does not load the weights associated with the model, only the
-            configuration. Check out the [`~PreTrainedModel.from_pretrained`] method to load the model weights.
-"""
 
 DEIT_INPUTS_DOCSTRING = r"""
     Args:
@@ -531,10 +644,7 @@ DEIT_INPUTS_DOCSTRING = r"""
 """
 
 
-@add_start_docstrings(
-    "The bare DeiT Model transformer outputting raw hidden-states without any specific head on top.",
-    DEIT_START_DOCSTRING,
-)
+
 class DeiTModel(DeiTPreTrainedModel):
     def __init__(self, config: DeiTConfig, add_pooling_layer: bool = True, use_mask_token: bool = False) -> None:
         super().__init__(config)
@@ -560,14 +670,6 @@ class DeiTModel(DeiTPreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
-    @add_code_sample_docstrings(
-        checkpoint=_CHECKPOINT_FOR_DOC,
-        output_type=BaseModelOutputWithPooling,
-        config_class=_CONFIG_FOR_DOC,
-        modality="vision",
-        expected_output=_EXPECTED_OUTPUT_SHAPE,
-    )
     def forward(
         self,
         pixel_values: Optional[paddle.Tensor] = None,
@@ -631,7 +733,7 @@ class DeiTModel(DeiTPreTrainedModel):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTPooler with ViT->DeiT
-class DeiTPooler(nn.Module):
+class DeiTPooler(nn.Layer):
     def __init__(self, config: DeiTConfig):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.pooler_output_size)
@@ -646,18 +748,6 @@ class DeiTPooler(nn.Module):
         return pooled_output
 
 
-@add_start_docstrings(
-    """DeiT Model with a decoder on top for masked image modeling, as proposed in [SimMIM](https://arxiv.org/abs/2111.09886).
-
-    <Tip>
-
-    Note that we provide a script to pre-train this model on custom data in our [examples
-    directory](https://github.com/huggingface/transformers/tree/main/examples/pytorch/image-pretraining).
-
-    </Tip>
-    """,
-    DEIT_START_DOCSTRING,
-)
 class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__(config)
@@ -676,8 +766,6 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=MaskedImageModelingOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         pixel_values: Optional[paddle.Tensor] = None,
@@ -697,7 +785,7 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         Examples:
         ```python
         >>> from transformers import AutoImageProcessor, DeiTForMaskedImageModeling
-        >>> import torch
+        >>> import paddle
         >>> from PIL import Image
         >>> import requests
 
@@ -710,7 +798,7 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         >>> num_patches = (model.config.image_size // model.config.patch_size) ** 2
         >>> pixel_values = image_processor(images=image, return_tensors="pt").pixel_values
         >>> # create random boolean mask of shape (batch_size, num_patches)
-        >>> bool_masked_pos = torch.randint(low=0, high=2, size=(1, num_patches)).bool()
+        >>> bool_masked_pos = paddle.randint(low=0, high=2, size=(1, num_patches)).bool()
 
         >>> outputs = model(pixel_values, bool_masked_pos=bool_masked_pos)
         >>> loss, reconstructed_pixel_values = outputs.loss, outputs.reconstruction
@@ -765,13 +853,6 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         )
 
 
-@add_start_docstrings(
-    """
-    DeiT Model transformer with an image classification head on top (a linear layer on top of the final hidden state of
-    the [CLS] token) e.g. for ImageNet.
-    """,
-    DEIT_START_DOCSTRING,
-)
 class DeiTForImageClassification(DeiTPreTrainedModel):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__(config)
@@ -785,8 +866,6 @@ class DeiTForImageClassification(DeiTPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=ImageClassifierOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         pixel_values: Optional[paddle.Tensor] = None,
@@ -809,11 +888,11 @@ class DeiTForImageClassification(DeiTPreTrainedModel):
 
         ```python
         >>> from transformers import AutoImageProcessor, DeiTForImageClassification
-        >>> import torch
+        >>> import paddle
         >>> from PIL import Image
         >>> import requests
 
-        >>> torch.manual_seed(3)  # doctest: +IGNORE_RESULT
+        >>> paddle.manual_seed(3)  # doctest: +IGNORE_RESULT
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
         >>> image = Image.open(requests.get(url, stream=True).raw)
 
@@ -852,7 +931,7 @@ class DeiTForImageClassification(DeiTPreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (labels.dtype == paddle.int64 or labels.dtype == paddle.int32):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -911,19 +990,6 @@ class DeiTForImageClassificationWithTeacherOutput(ModelOutput):
     hidden_states: Optional[Tuple[paddle.Tensor]] = None
     attentions: Optional[Tuple[paddle.Tensor]] = None
 
-
-@add_start_docstrings(
-    """
-    DeiT Model transformer with image classification heads on top (a linear layer on top of the final hidden state of
-    the [CLS] token and a linear layer on top of the final hidden state of the distillation token) e.g. for ImageNet.
-
-    .. warning::
-
-           This model supports inference-only. Fine-tuning with distillation (i.e. with a teacher) is not yet
-           supported.
-    """,
-    DEIT_START_DOCSTRING,
-)
 class DeiTForImageClassificationWithTeacher(DeiTPreTrainedModel):
     def __init__(self, config: DeiTConfig) -> None:
         super().__init__(config)
@@ -942,13 +1008,6 @@ class DeiTForImageClassificationWithTeacher(DeiTPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
-    @add_code_sample_docstrings(
-        checkpoint=_IMAGE_CLASS_CHECKPOINT,
-        output_type=DeiTForImageClassificationWithTeacherOutput,
-        config_class=_CONFIG_FOR_DOC,
-        expected_output=_IMAGE_CLASS_EXPECTED_OUTPUT,
-    )
     def forward(
         self,
         pixel_values: Optional[paddle.Tensor] = None,

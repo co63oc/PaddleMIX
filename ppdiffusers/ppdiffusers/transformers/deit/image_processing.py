@@ -18,33 +18,79 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 
-from ...image_processing_utils import BaseImageProcessor, BatchFeature, get_size_dict
-from ...image_transforms import resize, to_channel_dimension_format
-from ...image_utils import (
+from paddlenlp.transformers.image_processing_utils import BaseImageProcessor, BatchFeature, get_size_dict
+from paddlenlp.transformers.image_transforms import resize, to_channel_dimension_format
+from paddlenlp.transformers.image_utils import (
     IMAGENET_STANDARD_MEAN,
     IMAGENET_STANDARD_STD,
     ChannelDimension,
     ImageInput,
     PILImageResampling,
     infer_channel_dimension_format,
-    is_scaled_image,
+    # is_scaled_image,
     make_list_of_images,
     to_numpy_array,
     valid_images,
-    validate_preprocess_arguments,
+    # validate_preprocess_arguments,
 )
-from ...utils import TensorType, filter_out_non_signature_kwargs, is_vision_available, logging
-from ...utils.import_utils import requires
+from paddlenlp.transformers.tokenizer_utils_base import TensorType
+from ...utils import logging
 
-
-if is_vision_available():
-    import PIL
-
+import PIL
 
 logger = logging.get_logger(__name__)
 
+def is_scaled_image(image: np.ndarray) -> bool:
+    """
+    Checks to see whether the pixel values have already been rescaled to [0, 1].
+    """
+    if image.dtype == np.uint8:
+        return False
 
-@requires(backends=("vision",))
+    # It's possible the image has pixel values in [0, 255] but is of floating type
+    return np.min(image) >= 0 and np.max(image) <= 1
+
+
+def validate_preprocess_arguments(
+    do_rescale: Optional[bool] = None,
+    rescale_factor: Optional[float] = None,
+    do_normalize: Optional[bool] = None,
+    image_mean: Optional[Union[float, list[float]]] = None,
+    image_std: Optional[Union[float, list[float]]] = None,
+    do_pad: Optional[bool] = None,
+    size_divisibility: Optional[int] = None,
+    do_center_crop: Optional[bool] = None,
+    crop_size: Optional[dict[str, int]] = None,
+    do_resize: Optional[bool] = None,
+    size: Optional[dict[str, int]] = None,
+    resample: Optional["PILImageResampling"] = None,
+):
+    """
+    Checks validity of typically used arguments in an `ImageProcessor` `preprocess` method.
+    Raises `ValueError` if arguments incompatibility is caught.
+    Many incompatibilities are model-specific. `do_pad` sometimes needs `size_divisor`,
+    sometimes `size_divisibility`, and sometimes `size`. New models and processors added should follow
+    existing arguments when possible.
+
+    """
+    if do_rescale and rescale_factor is None:
+        raise ValueError("`rescale_factor` must be specified if `do_rescale` is `True`.")
+
+    if do_pad and size_divisibility is None:
+        # Here, size_divisor might be passed as the value of size
+        raise ValueError(
+            "Depending on the model, `size_divisibility`, `size_divisor`, `pad_size` or `size` must be specified if `do_pad` is `True`."
+        )
+
+    if do_normalize and (image_mean is None or image_std is None):
+        raise ValueError("`image_mean` and `image_std` must both be specified if `do_normalize` is `True`.")
+
+    if do_center_crop and crop_size is None:
+        raise ValueError("`crop_size` must be specified if `do_center_crop` is `True`.")
+
+    if do_resize and (size is None or resample is None):
+        raise ValueError("`size` and `resample` must be specified if `do_resize` is `True`.")
+
 class DeiTImageProcessor(BaseImageProcessor):
     r"""
     Constructs a DeiT image processor.
@@ -161,7 +207,6 @@ class DeiTImageProcessor(BaseImageProcessor):
             **kwargs,
         )
 
-    @filter_out_non_signature_kwargs()
     def preprocess(
         self,
         images: ImageInput,
