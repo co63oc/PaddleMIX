@@ -22,12 +22,12 @@ import paddle
 from paddle import nn
 from paddle.nn import CrossEntropyLoss
 
-from ...activations import ACT2FN
-from ...generation import GenerationMixin
-from ...modeling_attn_mask_utils import _prepare_4d_attention_mask, _prepare_4d_causal_attention_mask
-from ...modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from ...model_utils import PretrainedModel as PreTrainedModel
-from ...utils import add_start_docstrings, logging, replace_return_docstrings
+from paddlenlp.transformers.activations import ACT2FN
+from paddlenlp.generation import GenerationMixin
+from ..modeling_attn_mask_utils import _prepare_4d_attention_mask, _prepare_4d_causal_attention_mask
+from paddlenlp.transformers.model_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
+from ..model_utils import PretrainedModel as PreTrainedModel
+from ...utils import logging
 from .configuration_trocr import TrOCRConfig
 
 
@@ -713,10 +713,10 @@ class TrOCRDecoder(TrOCRPreTrainedModel):
         )
 
 
-@add_start_docstrings(
-    "The TrOCR Model with a language modeling head. Can be used for summarization.",
-    TROCR_START_DOCSTRING,
-)
+# @add_start_docstrings(
+#     "The TrOCR Model with a language modeling head. Can be used for summarization.",
+#     TROCR_START_DOCSTRING,
+# )
 class TrOCRDecoderWrapper(TrOCRPreTrainedModel):
     """
     This wrapper class is a helper class to correctly load pretrained checkpoints when the causal language model is
@@ -731,11 +731,11 @@ class TrOCRDecoderWrapper(TrOCRPreTrainedModel):
         return self.decoder(*args, **kwargs)
 
 
-@add_start_docstrings(
-    "The TrOCR Decoder with a language modeling head. Can be used as the decoder part of [`EncoderDecoderModel`] and"
-    " [`VisionEncoderDecoder`].",
-    TROCR_START_DOCSTRING,
-)
+# @add_start_docstrings(
+#     "The TrOCR Decoder with a language modeling head. Can be used as the decoder part of [`EncoderDecoderModel`] and"
+#     " [`VisionEncoderDecoder`].",
+#     TROCR_START_DOCSTRING,
+# )
 class TrOCRForCausalLM(TrOCRPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["output_projection.weight"]
 
@@ -769,7 +769,7 @@ class TrOCRForCausalLM(TrOCRPreTrainedModel, GenerationMixin):
     def get_decoder(self):
         return self.model.decoder
 
-    @replace_return_docstrings(output_type=CausalLMOutputWithCrossAttentions, config_class=_CONFIG_FOR_DOC)
+    # @replace_return_docstrings(output_type=CausalLMOutputWithCrossAttentions, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         input_ids: Optional[paddle.Tensor] = None,

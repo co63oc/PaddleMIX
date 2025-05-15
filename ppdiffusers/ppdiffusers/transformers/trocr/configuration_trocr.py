@@ -14,7 +14,7 @@
 # limitations under the License.
 """TrOCR model configuration"""
 
-from ...configuration_utils import PretrainedConfig
+from paddlenlp.transformers.configuration_utils import PretrainedConfig
 from ...utils import logging
 
 
