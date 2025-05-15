@@ -62,7 +62,7 @@ def find_pruneable_heads_and_indices(
         # Compute how many pruned heads are before the head and move the index accordingly
         head = head - sum(1 if h < head else 0 for h in already_pruned_heads)
         mask[head] = 0
-    mask = mask.reshape([-1]).equal(1)
+    mask = mask.view(-1).equal(1)
     index: paddle.Tensor = paddle.arange(len(mask))[mask].astype(paddle.int64)
     return heads, index
 
@@ -88,15 +88,15 @@ def prune_linear_layer(layer: nn.Linear, index: paddle.Tensor, dim: int = 0) -> 
             b = layer.bias.detach().clone()
         else:
             b = layer.bias[index].detach().clone()
-    new_size = list(layer.weight.size())
+    new_size = list(tuple(layer.weight.shape))
     new_size[dim] = len(index)
     new_layer = nn.Linear(new_size[1], new_size[0], bias=layer.bias is not None).to(layer.weight.device)
     new_layer.weight.stop_gradient = True
-    new_layer.weight.copy_(W)
+    paddle.assign(W.contiguous(), output=new_layer.weight)
     new_layer.weight.stop_gradient = False
     if layer.bias is not None:
         new_layer.bias.stop_gradient = True
-        new_layer.bias.copy_(b)
+        paddle.assign(b.contiguous(), output=new_layer.bias)
         new_layer.bias.stop_gradient = False
     return new_layer
 
@@ -204,8 +204,8 @@ class DeiTEmbeddings(nn.Layer):
         - https://github.com/facebookresearch/dinov2/blob/e1277af2ba9496fbadf7aec6eba56e8d882d1e35/dinov2/models/vision_transformer.py#L179-L211
         """
 
-        num_patches = embeddings.shape[1] - 2
-        num_positions = self.position_embeddings.shape[1] - 2
+        num_patches = tuple(embeddings.shape)[1] - 2
+        num_positions = tuple(self.position_embeddings.shape)[1] - 2
 
         # always interpolate when tracing to ensure the exported model works for dynamic input shapes
         if num_patches == num_positions and height == width:
@@ -240,20 +240,20 @@ class DeiTEmbeddings(nn.Layer):
         bool_masked_pos: Optional[paddle.Tensor] = None,
         interpolate_pos_encoding: bool = False,
     ) -> paddle.Tensor:
-        _, _, height, width = pixel_values.shape
+        _, _, height, width = tuple(pixel_values.shape)
         embeddings = self.patch_embeddings(pixel_values)
 
-        batch_size, seq_length, _ = embeddings.size()
+        batch_size, seq_length, _ = tuple(embeddings.shape)
 
         if bool_masked_pos is not None:
-            mask_tokens = self.mask_token.expand(batch_size, seq_length, -1)
+            mask_tokens = self.mask_token.expand([batch_size, seq_length, -1])
             # replace the masked visual tokens by mask_tokens
-            mask = bool_masked_pos.unsqueeze(-1).type_as(mask_tokens)
+            mask = bool_masked_pos.unsqueeze(-1).astype(mask_tokens.dtype)
             embeddings = embeddings * (1.0 - mask) + mask_tokens * mask
 
-        cls_tokens = self.cls_token.expand(batch_size, -1, -1)
+        cls_tokens = self.cls_token.expand([batch_size, -1, -1])
 
-        distillation_tokens = self.distillation_token.expand(batch_size, -1, -1)
+        distillation_tokens = self.distillation_token.expand([batch_size, -1, -1])
 
         embeddings = paddle.concat((cls_tokens, distillation_tokens, embeddings), axis=1)
         position_embedding = self.position_embeddings
@@ -318,7 +318,7 @@ def eager_attention_forward(
     attn_weights = paddle.matmul(query, key.transpose(perm)) * scaling
 
     # Normalize the attention scores to probabilities.
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=paddle.float32).to(query.dtype)
+    attn_weights = nn.functional.softmax(attn_weights, axis=-1, dtype=paddle.float32).to(query.dtype)
 
     # This is actually dropping out entire tokens to attend to, which might
     # seem a bit unusual, but is taken from the original Transformer paper.
@@ -359,9 +359,9 @@ class DeiTSelfAttention(nn.Layer):
         self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
 
     def transpose_for_scores(self, x: paddle.Tensor) -> paddle.Tensor:
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        new_x_shape = tuple(x.shape)[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        return x.transpose(perm=[0, 2, 1, 3])
 
     def forward(
         self, hidden_states, head_mask: Optional[paddle.Tensor] = None, output_attentions: bool = False
@@ -391,7 +391,7 @@ class DeiTSelfAttention(nn.Layer):
             dropout=0.0 if not self.training else self.dropout_prob,
         )
 
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        new_context_layer_shape = tuple(context_layer.shape)[:-2] + (self.all_head_size,)
         context_layer = context_layer.reshape(new_context_layer_shape)
 
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
@@ -502,8 +502,8 @@ class DeiTLayer(nn.Layer):
         self.attention = DeiTAttention(config)
         self.intermediate = DeiTIntermediate(config)
         self.output = DeiTOutput(config)
-        self.layernorm_before = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.layernorm_after = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm_before = nn.LayerNorm(config.hidden_size, epsilon=config.layer_norm_eps)
+        self.layernorm_after = nn.LayerNorm(config.hidden_size, epsilon=config.layer_norm_eps)
 
     def forward(
         self,
@@ -600,13 +600,16 @@ class DeiTPreTrainedModel(PreTrainedModel):
     _supports_sdpa = True
     _supports_flash_attn_2 = True
 
-    def _init_weights(self, module: Union[nn.Linear, nn.Conv2d, nn.LayerNorm]) -> None:
+    def _init_weights(self, module: Union[nn.Linear, nn.Conv2D, nn.LayerNorm]) -> None:
         """Initialize the weights"""
-        if isinstance(module, (nn.Linear, nn.Conv2d)):
+        if isinstance(module, (nn.Linear, nn.Conv2D)):
             # Upcast the input in `fp32` and cast it back to desired `dtype` to avoid
             # `trunc_normal_cpu` not implemented in `half` issues
-            module.weight.data = nn.init.trunc_normal_(
-                module.weight.data.to(paddle.float32), mean=0.0, std=self.config.initializer_range
+            init_TruncatedNormal = paddle.nn.initializer.TruncatedNormal(
+                mean=0.0, std=self.config.initializer_range
+            )
+            module.weight.data = init_TruncatedNormal(
+                module.weight.data.to("float32")
             ).to(module.weight.dtype)
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -757,7 +760,7 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         self.deit = DeiTModel(config, add_pooling_layer=False, use_mask_token=True)
 
         self.decoder = nn.Sequential(
-            nn.Conv2d(
+            nn.Conv2D(
                 in_channels=config.hidden_size,
                 out_channels=config.encoder_stride**2 * config.num_channels,
                 kernel_size=1,
@@ -825,7 +828,7 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         sequence_output = sequence_output[:, 1:-1]
         batch_size, sequence_length, num_channels = sequence_output.shape
         height = width = int(sequence_length**0.5)
-        sequence_output = sequence_output.permute(0, 2, 1).reshape(batch_size, num_channels, height, width)
+        sequence_output = sequence_output.transpose(perm=[0, 2, 1]).reshape([batch_size, num_channels, height, width])
 
         # Reconstruct pixel values
         reconstructed_pixel_values = self.decoder(sequence_output)
@@ -833,7 +836,7 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
         masked_im_loss = None
         if bool_masked_pos is not None:
             size = self.config.image_size // self.config.patch_size
-            bool_masked_pos = bool_masked_pos.reshape(-1, size, size)
+            bool_masked_pos = bool_masked_pos.reshape([-1, size, size])
             mask = (
                 bool_masked_pos.repeat_interleave(self.config.patch_size, 1)
                 .repeat_interleave(self.config.patch_size, 2)
