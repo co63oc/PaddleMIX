@@ -25,12 +25,15 @@ from paddlenlp.transformers.image_utils import ImageInput
 from paddlenlp.transformers.processing_utils import ProcessorMixin
 from paddlenlp.transformers.tokenizer_utils_base import PreTokenizedInput, TextInput
 
+import sys
+import typing
+import typing_extensions
 if sys.version_info >= (3, 11):
     Unpack = typing.Unpack
 else:
     Unpack = typing_extensions.Unpack
 
-class TrOCRProcessorKwargs(total=False):
+class TrOCRProcessorKwargs(): # total=False):
     _defaults = {}
 
 

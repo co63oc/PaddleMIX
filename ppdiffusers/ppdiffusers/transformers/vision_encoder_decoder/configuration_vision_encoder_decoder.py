@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, OrderedDict
 
 from packaging import version
 
-from ...model_utils import PretrainedConfig
+from ..model_utils import PretrainedConfig
 from ...utils import logging
 from ..auto.configuration import AutoConfig
 
 
 if TYPE_CHECKING:
-    from ... import PreTrainedTokenizerBase, TensorType
+    from paddlenlp.transformers.tokenizer_utils_base import PreTrainedTokenizerBase, TensorType
 
 logger = logging.get_logger(__name__)
 
