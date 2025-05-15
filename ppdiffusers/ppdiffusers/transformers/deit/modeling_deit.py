@@ -62,7 +62,7 @@ def find_pruneable_heads_and_indices(
         # Compute how many pruned heads are before the head and move the index accordingly
         head = head - sum(1 if h < head else 0 for h in already_pruned_heads)
         mask[head] = 0
-    mask = mask.reshape([-1]).contiguous().eq(1)
+    mask = mask.reshape([-1]).equal(1)
     index: paddle.Tensor = paddle.arange(len(mask))[mask].astype(paddle.int64)
     return heads, index
 
@@ -92,11 +92,11 @@ def prune_linear_layer(layer: nn.Linear, index: paddle.Tensor, dim: int = 0) -> 
     new_size[dim] = len(index)
     new_layer = nn.Linear(new_size[1], new_size[0], bias=layer.bias is not None).to(layer.weight.device)
     new_layer.weight.stop_gradient = True
-    new_layer.weight.copy_(W.contiguous())
+    new_layer.weight.copy_(W)
     new_layer.weight.stop_gradient = False
     if layer.bias is not None:
         new_layer.bias.stop_gradient = True
-        new_layer.bias.copy_(b.contiguous())
+        new_layer.bias.copy_(b)
         new_layer.bias.stop_gradient = False
     return new_layer
 
@@ -175,9 +175,6 @@ class MaskedImageModelingOutput(ModelOutput):
             FutureWarning,
         )
         return self.reconstruction
-
-# General docstring
-_CONFIG_FOR_DOC = "DeiTConfig"
 
 
 class DeiTEmbeddings(nn.Layer):
@@ -289,7 +286,7 @@ class DeiTPatchEmbeddings(nn.Layer):
         self.num_channels = num_channels
         self.num_patches = num_patches
 
-        self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
+        self.projection = nn.Conv2D(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, pixel_values: paddle.Tensor) -> paddle.Tensor:
         batch_size, num_channels, height, width = pixel_values.shape
@@ -297,7 +294,10 @@ class DeiTPatchEmbeddings(nn.Layer):
             raise ValueError(
                 "Make sure that the channel dimension of the pixel values match with the one set in the configuration."
             )
-        x = self.projection(pixel_values).flatten(2).transpose(1, 2)
+        x = self.projection(pixel_values).flatten(2)
+        perm = paddle.arange(len(x.shape))
+        perm[1], perm[2] = perm[2], perm[1]
+        x = x.transpose(perm)
         return x
 
 
@@ -329,7 +329,9 @@ def eager_attention_forward(
         attn_weights = attn_weights * attention_mask
 
     attn_output = paddle.matmul(attn_weights, value)
-    attn_output = attn_output.transpose(1, 2).contiguous()
+    perm = paddle.arrange(len(attn_output.shape))
+    perm[2], perm[1] = perm[1], perm[2]
+    attn_output = attn_output.transpose(perm)
 
     return attn_output, attn_weights
 
@@ -836,7 +838,6 @@ class DeiTForMaskedImageModeling(DeiTPreTrainedModel):
                 bool_masked_pos.repeat_interleave(self.config.patch_size, 1)
                 .repeat_interleave(self.config.patch_size, 2)
                 .unsqueeze(1)
-                .contiguous()
             )
             reconstruction_loss = nn.functional.l1_loss(pixel_values, reconstructed_pixel_values, reduction="none")
             masked_im_loss = (reconstruction_loss * mask).sum() / (mask.sum() + 1e-5) / self.config.num_channels
