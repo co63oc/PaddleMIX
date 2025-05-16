@@ -16,11 +16,14 @@ from paddlenlp.transformers import *  # isort:skip
 from .auto import *
 from .bert import *
 from .clip import *
+from .deit import *
 from .gpt2 import *
 from .roberta import *
 from .siglip import *
 from .t5 import *
+from .trocr import *
 from .umt5 import *
+from .vision_encoder_decoder import *
 from .xlm_roberta import *
 
 # overridden model_utils

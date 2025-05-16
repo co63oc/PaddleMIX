@@ -22,18 +22,20 @@ from typing import List, Union
 
 from paddlenlp.transformers.image_processing_utils import BatchFeature
 from paddlenlp.transformers.image_utils import ImageInput
-from paddlenlp.transformers.processing_utils import ProcessorMixin
+from ..processing_utils import ProcessorMixin, ProcessingKwargs 
 from paddlenlp.transformers.tokenizer_utils_base import PreTokenizedInput, TextInput
-
+from ...utils import logging
 import sys
 import typing
 import typing_extensions
+logger = logging.get_logger(__name__)
+
 if sys.version_info >= (3, 11):
     Unpack = typing.Unpack
 else:
     Unpack = typing_extensions.Unpack
 
-class TrOCRProcessorKwargs(): # total=False):
+class TrOCRProcessorKwargs(ProcessingKwargs, total=(False)):
     _defaults = {}
 
 
