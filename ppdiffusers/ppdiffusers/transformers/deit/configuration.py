@@ -131,6 +131,7 @@ class DeiTConfig(PretrainedConfig):
         self.encoder_stride = encoder_stride
         self.pooler_output_size = pooler_output_size if pooler_output_size else hidden_size
         self.pooler_act = pooler_act
+        self.architectures = ["DeiTModel"]  # paddle needs this to be set, or set it in config.json
 
 
 class DeiTOnnxConfig:
