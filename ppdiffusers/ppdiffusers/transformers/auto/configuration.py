@@ -17,12 +17,110 @@ import io
 import json
 import os
 from collections import defaultdict
-
+from collections import OrderedDict
 from paddlenlp.transformers.auto.configuration import AutoConfig as PPNLPAutoConfig
 from paddlenlp.utils.import_utils import import_module
+import importlib
 
 from ..model_utils import PretrainedConfig, PretrainedModel
+CONFIG_MAPPING_NAMES = OrderedDict(
+    [
+                ("deit", "DeiTConfig"),
+                        ("trocr", "TrOCRConfig"),
+                                ("vision-encoder-decoder", "VisionEncoderDecoderConfig"),
+    ]
+)
+MODEL_NAMES_MAPPING = OrderedDict(
+    [
+                ("deit", "DeiT"),
+                        ("trocr", "TrOCR"),
+                                ("vision-encoder-decoder", "Vision Encoder decoder"),
+    ]
+)
+DEPRECATED_MODELS = [
+]
+SPECIAL_MODEL_TYPE_TO_MODULE_NAME = OrderedDict([])
 
+def model_type_to_module_name(key):
+    """Converts a config key to the corresponding module."""
+    if key in SPECIAL_MODEL_TYPE_TO_MODULE_NAME:
+        key = SPECIAL_MODEL_TYPE_TO_MODULE_NAME[key]
+        if key in DEPRECATED_MODELS:
+            key = f"deprecated.{key}"
+        return key
+    key = key.replace("-", "_")
+    if key in DEPRECATED_MODELS:
+        key = f"deprecated.{key}"
+    return key
+
+
+def config_class_to_model_type(config):
+    """Converts a config class name to the corresponding model type"""
+    for key, cls in CONFIG_MAPPING_NAMES.items():
+        if cls == config:
+            return key
+    for key, cls in CONFIG_MAPPING._extra_content.items():
+        if cls.__name__ == config:
+            return key
+    return None
+
+class _LazyConfigMapping(OrderedDict):
+    """
+    A dictionary that lazily load its values when they are requested.
+    """
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+        self._extra_content = {}
+        self._modules = {}
+
+    def __getitem__(self, key):
+        if key in self._extra_content:
+            return self._extra_content[key]
+        if key not in self._mapping:
+            raise KeyError(key)
+        value = self._mapping[key]
+        module_name = model_type_to_module_name(key)
+        if module_name not in self._modules:
+            self._modules[module_name] = importlib.import_module(
+                f".{module_name}", "ppdiffusers.transformers"
+            )
+        if hasattr(self._modules[module_name], value):
+            return getattr(self._modules[module_name], value)
+        transformers_module = importlib.import_module("ppdiffusers.transformers")
+        return getattr(transformers_module, value)
+
+    def keys(self):
+        return list(self._mapping.keys()) + list(self._extra_content.keys())
+
+    def values(self):
+        return [self[k] for k in self._mapping.keys()] + list(
+            self._extra_content.values()
+        )
+
+    def items(self):
+        return [(k, self[k]) for k in self._mapping.keys()] + list(
+            self._extra_content.items()
+        )
+
+    def __iter__(self):
+        return iter(list(self._mapping.keys()) + list(self._extra_content.keys()))
+
+    def __contains__(self, item):
+        return item in self._mapping or item in self._extra_content
+
+    def register(self, key, value, exist_ok=False):
+        """
+        Register a new configuration in this mapping.
+        """
+        if key in self._mapping.keys() and not exist_ok:
+            raise ValueError(
+                f"'{key}' is already used by a Transformers config, pick another name."
+            )
+        self._extra_content[key] = value
+
+
+CONFIG_MAPPING = _LazyConfigMapping(CONFIG_MAPPING_NAMES)
 
 def get_configurations():
     """load the configurations of PretrainedConfig mapping: {<model-name>: [<class-name>, <class-name>, ...], }
@@ -60,6 +158,15 @@ def get_configurations():
 class AutoConfig(PPNLPAutoConfig):
     MAPPING_NAMES = get_configurations()
 
+    @classmethod
+    def for_model(cls, model_type: str, *args, **kwargs):
+        if model_type in CONFIG_MAPPING:
+            config_class = CONFIG_MAPPING[model_type]
+            return config_class(*args, **kwargs)
+        raise ValueError(
+            f"Unrecognized model identifier: {model_type}. Should contain one of {', '.join(CONFIG_MAPPING.keys())}"
+        )
+        
     @classmethod
     def _get_config_class_from_config(cls, pretrained_model_name_or_path: str, config_file_path: str):
         with io.open(config_file_path, encoding="utf-8") as f:

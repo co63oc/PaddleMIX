@@ -18,7 +18,7 @@ import json
 import os
 from collections import OrderedDict, defaultdict
 
-from paddlenlp.transformers.auto.modeling import AutoModel as PPNLPAutoModel
+from paddlenlp.transformers.auto.modeling import AutoModel as PPNLPAutoModel, AutoModelForCausalLM as PPNLPAutoModelForCausalLM
 from paddlenlp.utils.import_utils import import_module
 
 from ..model_utils import PretrainedModel
@@ -40,6 +40,9 @@ NEW_MAPPING_NAMES = OrderedDict(
         ("Roberta", "roberta"),
         ("XLMRoberta", "xlm_roberta"),
         ("GPT2", "gpt2"),
+        ("DeiT", "deit"),
+        ("TrOCRForCausalLM", "trocr"),
+        ("VisionEncoderDecoder", "vision_encoder_decoder"),
     ]
 )
 MAPPING_NAMES.update(NEW_MAPPING_NAMES)
@@ -95,7 +98,39 @@ class AutoModel(PPNLPAutoModel):
         if config is None:
             with io.open(config_file_path, encoding="utf-8") as f:
                 config = json.load(f)
+              
+        # Get class name corresponds to this configuration
+        architectures = config["architectures"]
+        init_class = architectures.pop() if len(architectures) > 0 else None
+        assert init_class is not None, f"Unable to parse 'architectures' from {config_file_path}"
+        model_name = None
+        class_name = None
+        for model_flag, name in MAPPING_NAMES.items():
+            if model_flag in init_class:
+                model_name = model_flag + "Model"
+                class_name = name
+                break
 
+        if model_name is None or class_name is None:
+            raise AttributeError(
+                f"Unable to parse 'architectures' or 'init_class' from {config_file_path}. Also unable to infer model class from '{pretrained_model_name_or_path}'"
+            )
+        for package in ["ppdiffusers", "paddlenlp"]:
+            import_class = import_module(f"{package}.transformers.{class_name}.modeling")
+            if import_class is not None:
+                break
+        if import_class is None:
+            raise ImportError(f"Cannot find the {class_name} from paddlenlp or ppdiffusers.")
+        model_class = getattr(import_class, model_name)
+        return model_class
+
+class AutoModelForCausalLM(PPNLPAutoModelForCausalLM):
+    @classmethod
+    def _get_model_class_from_config(cls, pretrained_model_name_or_path, config_file_path, config=None):
+        if config is None:
+            with io.open(config_file_path, encoding="utf-8") as f:
+                config = json.load(f)
+              
         # Get class name corresponds to this configuration
         architectures = config["architectures"]
         init_class = architectures.pop() if len(architectures) > 0 else None
