@@ -33,9 +33,6 @@ from ...utils.paddle_utils import dim2perm
 
 logger = logging.get_logger(__name__)
 
-_CONFIG_FOR_DOC = "TrOCRConfig"
-_CHECKPOINT_FOR_DOC = "microsoft/trocr-base-handwritten"
-
 
 # Copied from transformers.models.bart.modeling_bart.BartLearnedPositionalEmbedding with Bart->TrOCR
 class TrOCRLearnedPositionalEmbedding(nn.Embedding):
@@ -771,7 +768,6 @@ class TrOCRForCausalLM(TrOCRPreTrainedModel, GenerationMixin):
     def get_decoder(self):
         return self.model.decoder
 
-    # @replace_return_docstrings(output_type=CausalLMOutputWithCrossAttentions, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         input_ids: Optional[paddle.Tensor] = None,

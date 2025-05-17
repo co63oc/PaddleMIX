@@ -27,11 +27,9 @@ from paddlenlp.transformers.image_utils import (
     ImageInput,
     PILImageResampling,
     infer_channel_dimension_format,
-    # is_scaled_image,
     make_list_of_images,
     to_numpy_array,
     valid_images,
-    # validate_preprocess_arguments,
 )
 from paddlenlp.transformers.tokenizer_utils_base import TensorType
 from ...utils import logging

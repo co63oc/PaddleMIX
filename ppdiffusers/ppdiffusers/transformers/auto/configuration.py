@@ -25,16 +25,16 @@ import importlib
 from ..model_utils import PretrainedConfig, PretrainedModel
 CONFIG_MAPPING_NAMES = OrderedDict(
     [
-                ("deit", "DeiTConfig"),
-                        ("trocr", "TrOCRConfig"),
-                                ("vision-encoder-decoder", "VisionEncoderDecoderConfig"),
+        ("deit", "DeiTConfig"),
+        ("trocr", "TrOCRConfig"),
+        ("vision-encoder-decoder", "VisionEncoderDecoderConfig"),
     ]
 )
 MODEL_NAMES_MAPPING = OrderedDict(
     [
-                ("deit", "DeiT"),
-                        ("trocr", "TrOCR"),
-                                ("vision-encoder-decoder", "Vision Encoder decoder"),
+        ("deit", "DeiT"),
+        ("trocr", "TrOCR"),
+        ("vision-encoder-decoder", "Vision Encoder decoder"),
     ]
 )
 DEPRECATED_MODELS = [
