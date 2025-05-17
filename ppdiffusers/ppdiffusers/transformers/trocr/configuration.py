@@ -133,7 +133,6 @@ class TrOCRConfig(PretrainedConfig):
         self.scale_embedding = scale_embedding
         self.use_learned_position_embeddings = use_learned_position_embeddings
         self.layernorm_embedding = layernorm_embedding
-        self.architectures = ["TrOCRForCausalLM"]  # paddle needs this to be set, or set it in config.json
 
         super().__init__(
             pad_token_id=pad_token_id,
@@ -142,6 +141,6 @@ class TrOCRConfig(PretrainedConfig):
             decoder_start_token_id=decoder_start_token_id,
             **kwargs,
         )
-
+        self.architectures = ["TrOCRForCausalLM"]  # paddle needs this to be set, or set it in config.json
 
 __all__ = ["TrOCRConfig"]

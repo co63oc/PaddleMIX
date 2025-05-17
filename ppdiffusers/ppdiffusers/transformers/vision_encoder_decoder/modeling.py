@@ -531,7 +531,7 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = True,
+        return_dict: Optional[bool] = None,
         **kwargs,
     ) -> Union[Tuple[paddle.Tensor], Seq2SeqLMOutput]:
         r"""
@@ -578,8 +578,6 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
             argument[len("decoder_") :]: value for argument, value in kwargs.items() if argument.startswith("decoder_")
         }
 
-        if decoder_input_ids is None and "input_ids" in kwargs:
-            decoder_input_ids = kwargs["input_ids"]
         if encoder_outputs is None:
             if pixel_values is None:
                 raise ValueError("You have to specify pixel_values")
@@ -663,5 +661,15 @@ class VisionEncoderDecoderModel(PreTrainedModel, GenerationMixin):
         # apply decoder cache reordering here
         return self.decoder._reorder_cache(past_key_values, beam_idx)
 
-
+    def prepare_inputs_for_generation(self, input_ids, **kwargs):
+        model_inputs = {}
+        if "encoder_output" in kwargs and "encoder_outputs" not in kwargs:
+            model_inputs["encoder_outputs"] = kwargs["encoder_output"]
+        if "decoder_input_ids" not in kwargs:
+            model_inputs["decoder_input_ids"] = input_ids
+        if "use_cache" in kwargs:
+            model_inputs["use_cache"] = kwargs["use_cache"]
+        model_inputs["return_dict"] = True
+        return model_inputs
+    
 __all__ = ["VisionEncoderDecoderModel"]

@@ -153,7 +153,7 @@ class AttentionMaskConverter:
         mask = mask.to(dtype=dtype)
 
         if past_key_values_length > 0:
-            mask = paddle.concat([paddle.zeros(tgt_len, past_key_values_length, dtype=dtype), mask], axis=-1)
+            mask = paddle.concat([paddle.zeros([tgt_len, past_key_values_length], dtype=dtype), mask], axis=-1)
 
         # add lower triangular sliding window mask if necessary
         if sliding_window is not None:
