@@ -6,9 +6,9 @@
 
 | Model              | 模型大小 | Huggingface 仓库地址 |
 |--------------------|----------|--------------------|
-| PPDocBeeV2-3B | 3B | [PPDocBeeV2-3B](https://huggingface.co/PaddleMIX/PPDocBeeV2-3B) |
+| PPDocBee2-3B | 3B | [PPDocBee2-3B](https://huggingface.co/PaddleMIX/PPDocBee2-3B) |
 
-注意：使用`xxx.from_pretrained("PaddleMIX/PPDocBeeV2-3B")`即可自动下载该权重文件夹到缓存目录。
+注意：使用`xxx.from_pretrained("PaddleMIX/PPDocBee2-3B")`即可自动下载该权重文件夹到缓存目录。
 
 
 ## 2 环境准备
@@ -18,30 +18,24 @@
 - **paddlepaddle-gpu 要求develop版本**
 ```bash
 # Develop 版本安装示例
-python -m pip install --pre paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/nightly/cu123/
+python -m pip install --pre paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/nightly/cu118/
 
 ```
 
 2） [安装PaddleMIX环境依赖包](https://github.com/PaddlePaddle/PaddleMIX?tab=readme-ov-file#3-%EF%B8%8F%E5%AE%89%E8%A3%85paddlepaddle)
 ```bash
-# pip 安装示例，安装paddlemix、ppdiffusers、项目依赖
-python -m pip install -e . --user
-python -m pip install -e ppdiffusers --user
-python -m pip install -r requirements.txt --user
-
-# 安装PaddleNLP
-git clone https://github.com/PaddlePaddle/PaddleNLP.git
-cd PaddleNLP
-python setup.py install
+# 安装paddlemix、ppdiffusers、项目依赖、PaddleNLP
+sh build_env.sh --nlp_dev
 
 # 此处提供两种paddlenlp_ops安装方法，建议使用预编译的paddlenlp_ops进行安装
 
 # 手动编译安装paddlenlp_ops
-cd csrc
+cd PaddleNLP/csrc
 python setup_cuda.py install
 
 # 安装pre-build paddlenlp_ops
-pip install https://paddlenlp.bj.bcebos.com/ops/cu118/paddlenlp_ops-3.0.0b4.post20250331-py3-none-any.whl
+wget https://paddlenlp.bj.bcebos.com/wheels/paddlenlp_ops-ci-py3-none-any.whl -O paddlenlp_ops-0.0.0-py3-none-any.whl
+pip install paddlenlp_ops-0.0.0-py3-none-any.whl
 ```
 
 3） paddlenlp_ops预编译包安装表格，根据paddlenlp、CUDA版本选择配套paddlenlp_ops 
@@ -95,7 +89,7 @@ export FLAGS_cascade_attention_max_partition_size=512
 export FLAGS_cascade_attention_deal_each_time=16
 export USE_FASTER_TOP_P_SAMPLING=1
 python deploy/ppdocbee2/ppdocbee2_infer.py \
-    --model_name_or_path PaddleMIX/PPDocBeeV2-3B \
+    --model_name_or_path PaddleMIX/PPDocBee2-3B \
     --media_type "image" \
     --image_file "paddlemix/demo_images/medal_table.png" \
     --question "识别这份表格的内容, 以markdown格式输出" \
@@ -120,7 +114,7 @@ python deploy/ppdocbee2/ppdocbee2_infer.py \
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1
 python -m paddle.distributed.launch --gpus "0,1" deploy/ppdocbee2/ppdocbee2_infer.py \
-    --model_name_or_path PaddleMIX/PPDocBeeV2-3B \
+    --model_name_or_path PaddleMIX/PPDocBee2-3B \
     --media_type "image" \
     --question "识别这份表格的内容, 以markdown格式输出" \
     --image_file paddlemix/demo_images/medal_table.png \
