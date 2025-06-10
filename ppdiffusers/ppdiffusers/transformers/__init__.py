@@ -16,6 +16,7 @@ from paddlenlp.transformers import *  # isort:skip
 from .auto import *
 from .bert import *
 from .clip import *
+from .data import *
 from .deit import *
 from .gpt2 import *
 from .roberta import *
@@ -28,3 +29,5 @@ from .xlm_roberta import *
 
 # overridden model_utils
 from .model_utils import ModuleUtilsMixin, PretrainedConfig, PretrainedModel  # isort:skip
+from .training_args_seq2seq import Seq2SeqTrainingArguments  # isort:skip
+from .trainer_seq2seq import Seq2SeqTrainer  # isort:skip

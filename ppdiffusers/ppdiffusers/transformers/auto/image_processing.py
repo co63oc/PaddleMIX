@@ -40,6 +40,7 @@ try:
     NEW_IMAGE_PROCESSOR_MAPPING_NAMES = OrderedDict(
         [
             ("CLIPImageProcessor", "clip"),
+            ("DeiTImageProcessor", "deit"),
         ]
     )
     IMAGE_PROCESSOR_MAPPING_NAMES.update(NEW_IMAGE_PROCESSOR_MAPPING_NAMES)
@@ -91,6 +92,8 @@ try:
             init_class = init_kwargs.pop("init_class", None)
             if init_class is None:
                 init_class = init_kwargs.pop("image_processor_type", None)
+            if init_class is None:
+                init_class = init_kwargs.pop("feature_extractor_type", None)  # old name
 
             if init_class:
                 # replace old name to new name
@@ -127,5 +130,6 @@ try:
                 raise ImportError("Cannot find the image_processing from paddlenlp or ppdiffusers.")
             return processor_class
 
-except ImportError:
+except ImportError as e:
+    logger.info(str(e))
     pass

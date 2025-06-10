@@ -28,6 +28,8 @@ from ..utils import (
 )
 
 from paddlenlp.transformers.processing_utils import ProcessorMixin as NLPProcessorMixin
+import ppdiffusers
+import paddlenlp
 
 logger = logging.get_logger(__name__)
 
@@ -446,3 +448,44 @@ class ProcessorMixin(NLPProcessorMixin):
         for modality in output_kwargs:
             output_kwargs[modality].update(output_kwargs["common_kwargs"])
         return output_kwargs
+
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        r"""
+        Instantiate a processor associated with a pretrained model.
+
+        <Tip>
+
+        This class method is simply calling the feature extractor
+        [`~feature_extraction_utils.FeatureExtractionMixin.from_pretrained`] and the tokenizer
+        [`~tokenization_utils_base.PreTrainedTokenizer.from_pretrained`] methods. Please refer to the docstrings of the
+        methods above for more information.
+
+        </Tip>
+
+        Args:
+            pretrained_model_name_or_path (`str` or `os.PathLike`):
+                This can be either:
+
+                - a string, the name of a community-contributed pretrained or built-in pretrained model.
+                - a path to a *directory* containing a feature extractor file saved using the
+                  [`~SequenceFeatureExtractor.save_pretrained`] method, e.g., `./my_model_directory/`.
+                - a path or url to a saved feature extractor JSON *file*, e.g.,
+                  `./my_model_directory/preprocessor_config.json`.
+            **kwargs
+                Additional keyword arguments passed along to both
+                [`~feature_extraction_utils.FeatureExtractionMixin.from_pretrained`] and
+                [`~tokenization_utils_base.PreTrainedTokenizer.from_pretrained`].
+        """
+        args = cls._get_arguments_from_pretrained(pretrained_model_name_or_path, **kwargs)
+        return cls(*args)
+    
+    @classmethod
+    def _get_arguments_from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        args = []
+        for attribute_name in cls.attributes:
+            class_name = getattr(cls, f"{attribute_name}_class")
+            attribute_class = getattr(ppdiffusers.transformers, class_name)
+            args.append(attribute_class.from_pretrained(pretrained_model_name_or_path, **kwargs))
+        return args
